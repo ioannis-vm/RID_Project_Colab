@@ -102,9 +102,6 @@ def get_pid_rid_pairs(df, system, stories, rc, story):
 
         return pairs
 
-    # # stack locations
-    # pairs = pairs_all_stories.stack('loc', future_stack=True)
-
     else:
 
         # filter story
@@ -152,7 +149,6 @@ def generate_plot(
 
     roll = models.Model()
     roll.add_data(pairs['PID'].values, pairs['RID'].values)
-    roll.censoring_limit = 0.0025
     roll.calculate_rolling_quantiles()
 
     pelicun_fitted_model = selected_model
@@ -401,11 +397,6 @@ def generate_plot(
             row=1,
             col=2,
         )
-
-    fig.update_layout(
-        barmode='group',
-        bargap=0.60,
-    )
 
     # Update layout to position the legend at the top
     fig.update_layout(
