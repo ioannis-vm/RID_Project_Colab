@@ -170,14 +170,14 @@ def generate_plot(
     model_rid_80 = pelicun_fitted_model.evaluate_inverse_cdf(0.80, model_pid)
 
     fema_model = models.Model_P58()
-    fema_model.set(delta_y=0.01, beta=0.80)
+    fema_model.set(delta_y=fema_delta_y, beta=fema_dispersion)
 
     fema_model_rid_50 = fema_model.evaluate_inverse_cdf(0.50, model_pid)
     fema_model_rid_20 = fema_model.evaluate_inverse_cdf(0.20, model_pid)
     fema_model_rid_80 = fema_model.evaluate_inverse_cdf(0.80, model_pid)
 
     sp3_model = models.Model_SP3()
-    sp3_model.set(model_option='brbf_backup', delta_y=0.0021, dispersion=0.8)
+    sp3_model.set(model_option=sp3_type, delta_y=sp3_delta_y, dispersion=sp3_dispersion)
 
     sp3_model_rid_50 = sp3_model.evaluate_inverse_cdf(0.50, model_pid)
     sp3_model_rid_20 = sp3_model.evaluate_inverse_cdf(0.20, model_pid)
