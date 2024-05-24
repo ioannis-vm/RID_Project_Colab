@@ -362,7 +362,7 @@ def generate_plot(
         type="rect",
         x0=0.00,
         y0=ymin,
-        x1=roll.censoring_limit,
+        x1=pelicun_fitted_model.censoring_limit,
         y1=ymax,
         fillcolor=c0,
         opacity=0.1,
