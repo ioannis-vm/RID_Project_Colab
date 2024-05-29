@@ -303,7 +303,7 @@ class Model_SP3(Model):
         Parameters
         ----------
         model_option: str
-            Any of {elastic, general, brbf_no_backup,
+            Any of {elastic_plastic, general_inelastic, brbf_no_backup,
             brbf_no_backup_grav, brbf_backup}. Controls the median
             RID|PID.
         dispersion: float
@@ -312,8 +312,8 @@ class Model_SP3(Model):
         """
 
         parameters = {
-            'elastic': np.array((0.25, 0.8, 3.0, 5.0)),
-            'general': np.array((0.125, 0.5, 2.0, 5.0)),
+            'elastic_plastic': np.array((0.25, 0.8, 3.0, 5.0)),
+            'general_inelastic': np.array((0.125, 0.5, 2.0, 5.0)),
             'brbf_no_backup': np.array((0.25, 0.8, 3.0, 5.0)),
             'brbf_no_backup_grav': np.array((0.2, 0.5, 2.0, 6.0)),
             'brbf_backup': np.array((0.06, 0.425, 2.25, 6.0)),
