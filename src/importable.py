@@ -121,6 +121,7 @@ def get_pid_rid_pairs(df, system, stories, rc, story):
 
 def generate_plot(
     df,
+    df_collapse,
     selected_model,
     system,
     stories,
@@ -138,6 +139,7 @@ def generate_plot(
     xmax,
     ymin,
     ymax,
+    show_collapse_probability,
 ):
 
     if story == 'max-max':
@@ -173,7 +175,9 @@ def generate_plot(
     fema_model_rid_80 = fema_model.evaluate_inverse_cdf(0.80, model_pid)
 
     sp3_model = models.Model_SP3()
-    sp3_model.set(model_option=sp3_type, delta_y=sp3_delta_y, dispersion=sp3_dispersion)
+    sp3_model.set(
+        model_option=sp3_type, delta_y=sp3_delta_y, dispersion=sp3_dispersion
+    )
 
     sp3_model_rid_50 = sp3_model.evaluate_inverse_cdf(0.50, model_pid)
     sp3_model_rid_20 = sp3_model.evaluate_inverse_cdf(0.20, model_pid)
@@ -223,15 +227,28 @@ def generate_plot(
             prob_fema.append(sum(rids_fema > capacities) / float(num_realizations))
             prob_sp3.append(sum(rids_sp3 > capacities) / float(num_realizations))
 
-    fig = make_subplots(
-        rows=1,
-        cols=2,
-        shared_yaxes=True,
-        column_widths=[0.7, 0.3],
-        subplot_titles=(
+    if show_collapse_probability:
+        ncols = 3
+        column_widths = [0.5, 0.25, 0.25]
+        subplot_titles = (
             f'{system}_{stories}_{rc} story {story} RID|PID distribution',
             'Probability of DS1',
-        ),
+            'Probability of collapse',
+        )
+    else:
+        ncols = 2
+        column_widths = [0.7, 0.3]
+        subplot_titles = (
+            f'{system}_{stories}_{rc} story {story} RID|PID distribution',
+            'Probability of DS1',
+        )
+
+    fig = make_subplots(
+        rows=1,
+        cols=ncols,
+        shared_yaxes=True,
+        column_widths=column_widths,
+        subplot_titles=subplot_titles,
     )
 
     if story == 'max-max':
@@ -398,6 +415,30 @@ def generate_plot(
             col=2,
         )
 
+    if show_collapse_probability:
+        # retrieve collapse probability
+        collapse_probability = df_collapse.loc[system, stories, rc]
+        collapse_probability.name = 'P(C)'
+        # get the mean PID for each hazard level
+        mean_pid = pairs[['hz', 'PID']].astype({'hz': int}).groupby('hz').mean()
+        # combine to form a single dataframe and remove NaNs
+        pid_and_collapse = pd.concat((mean_pid, collapse_probability), axis=1).dropna(
+            how='any'
+        )
+        fig.add_trace(
+            go.Scatter(
+                x=pid_and_collapse['P(C)'],
+                y=pid_and_collapse['PID'],
+                mode='lines+markers',
+                name='P(Collapse)',
+                marker=dict(color='black'),
+                line=dict(color='black'),
+                # legendgroup=legendgroup,
+            ),
+            row=1,
+            col=3,
+        )
+
     # Update layout to position the legend at the top
     fig.update_layout(
         legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
@@ -407,5 +448,8 @@ def generate_plot(
     fig.update_xaxes(title_text="RID", row=1, col=1)
     fig.update_yaxes(title_text="PID", row=1, col=1)
     fig.update_xaxes(title_text="P(excessive drift)", row=1, col=2)
+    if show_collapse_probability:
+        fig.update_xaxes(title_text="P(collapse)", row=1, col=3)
+        fig.update_xaxes(range=[-0.02, 1.02], row=1, col=3)
 
     fig.show()
