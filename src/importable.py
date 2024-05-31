@@ -40,8 +40,7 @@ def get_pid_rid_pairs(df, system, stories, rc, story):
 
     """
 
-    archetype = f'{system}_{stories}_{rc}'
-    df_archetype = df.loc[archetype, :]
+    df_archetype = df.loc[system, stories, rc, :]
 
     # remove cases where PID > 0.10 (unstable collapse)
     pairs_all_stories = (
