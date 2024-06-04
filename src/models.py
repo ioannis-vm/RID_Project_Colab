@@ -111,8 +111,9 @@ class Model:
             bounds=self.parameter_bounds,
             method="Nelder-Mead",
             options={"maxiter": 10000},
-            tol=1e-6,
+            tol=1e-10,
         )
+
         self.fit_meta = result
         assert result.success, "Minimization failed."
         self.parameters = result.x
@@ -287,6 +288,7 @@ class Model_SP3(Model):
 
     def delta_fnc(self, pid: npt.NDArray) -> npt.NDArray:
         delta = np.zeros_like(pid)
+        assert self.parameters is not None
         c_1, c_2, c_3, c_4, delta_y, _ = self.parameters
         mask = (delta_y <= pid) & (pid < c_4 * delta_y)
         delta[mask] = c_1 * (pid[mask] - delta_y)
@@ -352,12 +354,12 @@ class BilinearModel(Model):
 
     def bilinear_fnc(self, pid: npt.NDArray) -> npt.NDArray:
         assert self.parameters is not None
-        theta_1_a, c_lamda_slope, _ = self.parameters
-        c_lamda_0 = 1.0e-8
-        lamda = np.ones_like(pid) * c_lamda_0
+        theta_1_a, c_lambda_slope, _ = self.parameters
+        c_lambda_0 = 1.0e-8
+        lambda_values = np.ones_like(pid) * c_lambda_0
         mask = pid >= theta_1_a
-        lamda[mask] = (pid[mask] - theta_1_a) * c_lamda_slope + c_lamda_0
-        return lamda
+        lambda_values[mask] = (pid[mask] - theta_1_a) * c_lambda_slope + c_lambda_0
+        return lambda_values
 
     def evaluate_inverse_cdf(self, quantile: float, pid: npt.NDArray):
         """
@@ -383,20 +385,15 @@ class TrilinearModel(Model):
     One parameter constant, the other varies in a trilinear fashion.
     """
 
-    def trilinear_fnc(self, pid: npt.NDArray) -> npt.NDArray:
-        assert self.parameters is not None
-        theta_0, c_lamda_slope_0, theta_1, c_lamda_slope_1, _ = self.parameters
-        c_lamda_0 = 1.0e-8
-        lamda = np.ones_like(pid) * c_lamda_0
-        mask = pid >= theta_0
-        lamda[mask] = (pid[mask] - theta_0) * c_lamda_slope_0 + c_lamda_0
-        mask = pid >= theta_1
-        lamda[mask] = (
-            (pid[mask] - theta_1) * c_lamda_slope_1
-            + (theta_1 - theta_0) * c_lamda_slope_0
-            + c_lamda_0
-        )
-        return lamda
+    def trilinear_fnc(self, pid: npt.NDArray, y0, m0, m1, m2, x0, x1) -> npt.NDArray:
+        y1 = y0 + m0 * x0
+        y2 = y1 + m1 * (x1 - x0)
+        res = m0 * pid + y0
+        mask = pid > x0
+        res[mask] = (pid[mask] - x0) * m1 + y1
+        mask = pid > x1
+        res[mask] = (pid[mask] - x1) * m2 + y2
+        return res
 
     def evaluate_inverse_cdf(self, quantile: float, pid: npt.NDArray):
         """
@@ -471,23 +468,48 @@ class Model_Weibull_Trilinear(TrilinearModel):
     def __init__(self) -> None:
         super().__init__()
         # initial parameters
-        self.parameters = np.array((0.0025, 0.05, 0.008, 0.30, 1.30))
+        self.parameters = np.array((0.005, 0.15, 0.020, 0.40, 1.20, 1.20))
         # parameter names
         self.parameter_names = [
             'pid_0',
             'lambda_slope_0',
             'pid_1',
             'lambda_slope_1',
-            'kappa',
+            'kappa_0',
+            'kappa_1',
         ]
         # bounds
         self.parameter_bounds = [
-            (0.00, 0.02),
-            (0.00, 1.00),
-            (0.00, 0.02),
-            (0.00, 1.00),
-            (0.80, 4.00),
+            (0.00, 1.0e3),
+            (0.00, 0.20),
+            (0.00, 1.0e3),
+            (0.00, 1.0e3),
+            (0.01, 1.0e3),
+            (0.01, 1.0e3),
         ]
+
+    def obtain_lambda_and_kappa(
+        self,
+        pid: npt.NDArray,
+    ) -> npt.NDArray:
+        assert self.parameters is not None
+        (
+            pid_0,  # x0
+            lambda_slope_0,  # m1
+            pid_1,  # x1
+            lambda_slope_1,  # m2
+            kappa_0,  # y0, y1
+            kappa_1,  # y2
+        ) = self.parameters
+        # calculate m0 for kappa
+        kappa_slope_0 = (kappa_1 - kappa_0) / (pid_1 - pid_0)
+        lambda_trilinear = self.trilinear_fnc(
+            pid, 1e-6, 0.00, lambda_slope_0, lambda_slope_1, pid_0, pid_1
+        )
+        kappa_trilinear = self.trilinear_fnc(
+            pid, kappa_0, 0.00, kappa_slope_0, 0.00, pid_0, pid_1
+        )
+        return lambda_trilinear, kappa_trilinear
 
     def evaluate_pdf(
         self,
@@ -495,10 +517,10 @@ class Model_Weibull_Trilinear(TrilinearModel):
         pid: npt.NDArray,
         censoring_limit: Optional[float] = None,
     ) -> npt.NDArray:
-        assert self.parameters is not None
-        _, _, _, _, kappa = self.parameters
-        trilinear_fnc_val = self.trilinear_fnc(pid)
-        pdf_val = sp.stats.weibull_min.pdf(rid, kappa, 0.00, trilinear_fnc_val)
+        lambda_trilinear, kappa_trilinear = self.obtain_lambda_and_kappa(pid)
+        pdf_val = sp.stats.weibull_min.pdf(
+            rid, kappa_trilinear, 0.00, lambda_trilinear
+        )
         pdf_val[pdf_val < 1e-6] = 1e-6
         if censoring_limit:
             censored_range_mass = self.evaluate_cdf(
@@ -509,16 +531,14 @@ class Model_Weibull_Trilinear(TrilinearModel):
         return pdf_val
 
     def evaluate_cdf(self, rid: npt.NDArray, pid: npt.NDArray) -> npt.NDArray:
-        assert self.parameters is not None
-        _, _, _, _, kappa = self.parameters
-        trilinear_fnc_val = self.trilinear_fnc(pid)
-        return sp.stats.weibull_min.cdf(rid, kappa, 0.00, trilinear_fnc_val)
+        lambda_trilinear, kappa_trilinear = self.obtain_lambda_and_kappa(pid)
+        return sp.stats.weibull_min.cdf(rid, kappa_trilinear, 0.00, lambda_trilinear)
 
     def evaluate_inverse_cdf(self, quantile: float, pid: npt.NDArray) -> npt.NDArray:
-        assert self.parameters is not None
-        _, _, _, _, kappa = self.parameters
-        trilinear_fnc_val = self.trilinear_fnc(pid)
-        return sp.stats.weibull_min.ppf(quantile, kappa, 0.00, trilinear_fnc_val)
+        lambda_trilinear, kappa_trilinear = self.obtain_lambda_and_kappa(pid)
+        return sp.stats.weibull_min.ppf(
+            quantile, kappa_trilinear, 0.00, lambda_trilinear
+        )
 
 
 class Model_2_Gamma(BilinearModel):

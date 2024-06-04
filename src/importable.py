@@ -154,11 +154,16 @@ def generate_plot(
 
     pelicun_fitted_model = selected_model
     weibull_subset = pairs
-    weibull_subset = weibull_subset[weibull_subset['PID'] > 0.02]
+    if isinstance(selected_model, models.Model_Weibull_Trilinear):
+        pelicun_fitted_model.censoring_limit = 0.00025
+    elif isinstance(selected_model, models.Model_1_Weibull):
+        weibull_subset = weibull_subset[weibull_subset['PID'] > 0.02]
+        pelicun_fitted_model.censoring_limit = 0.0025
+    else:
+        raise ValueError(f'Unknown model.')
     pelicun_fitted_model.add_data(
         weibull_subset['PID'].values, weibull_subset['RID'].values
     )
-    pelicun_fitted_model.censoring_limit = 0.0025
     pelicun_fitted_model.fit(method='mle')
 
     model_pid = np.linspace(0.00, 0.06, 1000)
